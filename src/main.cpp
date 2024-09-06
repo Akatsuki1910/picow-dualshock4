@@ -1,73 +1,66 @@
 #include <stdio.h>
-#include <string.h>
 #include <algorithm>
-#include <functional>
 
 #include "pico/stdlib.h"
-#include "pico/time.h"
-#include "hardware/irq.h"
 #include "hardware/pwm.h"
 #include "ds4.h"
 
-using VoidFuncType = void (*)();
-using FuncType = std::function<VoidFuncType(int)>;
+const uint PWM_FREQ = 1000;	 // PWM周波数（Hz）
+const uint PWM_LEVEL = 1000; // PWMデューティサイクルの最大値
 
-#define PWM_PIN 16
-
-// static int ly = 0;
-// static int rx = 0;
-
-class PwmController
+void setup_pwm(uint gpio_pin)
 {
-public:
-	static int ly;
-	static int pin;
+	// GPIOピンをPWM機能に設定
+	gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
 
-	static void on_pwm_wrap()
-	{
-		pwm_clear_irq(pwm_gpio_to_slice_num(pin));
-		pwm_set_gpio_level(pin, ly * ly);
-	}
+	// PWMスライス番号の取得
+	uint slice_num = pwm_gpio_to_slice_num(gpio_pin);
 
-	static VoidFuncType set_ly(int p)
-	{
-		pin = p;
-		return on_pwm_wrap;
-	}
-};
-int PwmController::ly = 0;
-int PwmController::pin = 0;
+	// PWMのラップ値を設定
+	pwm_set_wrap(slice_num, PWM_LEVEL);
 
-void set_up_pwm(int pin, VoidFuncType func)
-{
-	gpio_set_function(pin, GPIO_FUNC_PWM);
-	uint slice_num = pwm_gpio_to_slice_num(pin);
-	pwm_clear_irq(slice_num);
-	pwm_set_irq_enabled(slice_num, true);
-	irq_set_exclusive_handler(PWM_IRQ_WRAP, func);
-	irq_set_enabled(PWM_IRQ_WRAP, true);
-	pwm_config config = pwm_get_default_config();
-	pwm_config_set_clkdiv(&config, 4.f);
-	pwm_init(slice_num, &config, true);
+	// PWMのデューティサイクルを設定（50%）
+	pwm_set_chan_level(slice_num, pwm_gpio_to_channel(gpio_pin), 0);
+
+	// PWMを有効にする
+	pwm_set_enabled(slice_num, true);
 }
 
-int main(void)
+void set_pwm_duty_cycle(uint gpio_pin, uint duty_cycle)
+{
+	uint slice_num = pwm_gpio_to_slice_num(gpio_pin);
+	pwm_set_chan_level(slice_num, pwm_gpio_to_channel(gpio_pin), duty_cycle);
+}
+
+int main()
 {
 	ds4_setup();
 
-	set_up_pwm(PWM_PIN, PwmController::set_ly(PWM_PIN));
+	setup_pwm(13);
+	setup_pwm(14);
+	setup_pwm(15);
+
+	uint duty_cycle = PWM_LEVEL / 2;
+	bool increase = true;
 
 	while (true)
 	{
-		sleep_ms(20);
 		tight_loop_contents();
 		if (ds4_can_use())
 		{
 			bt_hid_state state = ds4_get_state();
 			printf("buttons: %04x, l: %d,%d, r: %d,%d, l2,r2: %d,%d hat: %d\n", state.buttons, state.lx, state.ly, state.rx, state.ry, state.l2, state.r2, state.hat);
-			// pwm_set_gpio_level(PIN_PWM, (state.ry - 128) / 128 * 1023);
-			PwmController::ly = std::max(0, (state.ry - 128) * 2);
+			uint clip1 = std::max(0, state.ly - 128);
+			uint clip2 = std::max(0, state.ry - 128);
+			uint clip3 = std::min(0, state.ry - 128) * -1;
+
+			printf("clip1: %d, clip2: %d, clip3: %d\n", clip1, clip2, clip3);
+
+			set_pwm_duty_cycle(13, clip1 / 128.0 * PWM_LEVEL);
+			set_pwm_duty_cycle(14, clip2 / 128.0 * PWM_LEVEL);
+			set_pwm_duty_cycle(15, clip3 / 128.0 * PWM_LEVEL);
 		}
+		sleep_ms(20); // スリープで変更の間隔を制御
 	}
 
 	return 0;
