@@ -40,9 +40,6 @@ int main()
 	setup_pwm(14);
 	setup_pwm(15);
 
-	uint duty_cycle = PWM_LEVEL / 2;
-	bool increase = true;
-
 	while (true)
 	{
 		tight_loop_contents();
@@ -59,6 +56,7 @@ int main()
 			set_pwm_duty_cycle(13, clip1 / 128.0 * PWM_LEVEL);
 			set_pwm_duty_cycle(14, clip2 / 128.0 * PWM_LEVEL);
 			set_pwm_duty_cycle(15, clip3 / 128.0 * PWM_LEVEL);
+			set_pwm_duty_cycle(12, clip3 / 128.0 * PWM_LEVEL);
 		}
 		sleep_ms(20); // スリープで変更の間隔を制御
 	}
